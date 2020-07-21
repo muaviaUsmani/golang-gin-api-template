@@ -1,1 +1,1 @@
-# image-storage-api
+# golang-gin-api-template
