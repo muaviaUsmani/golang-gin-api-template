@@ -25,15 +25,15 @@ type PublicUser struct {
 // AuthenticatedUser data type
 type AuthenticatedUser struct {
 	PublicUser
-	Token      string `form:"token"`
-	ResetToken string `form:"resetToken"`
+	Token string `form:"token" json:"token"`
 }
 
 // User data type
 type User struct {
 	AuthenticatedUser
-	Password  string     `form:"password"`
-	DeletedAt *time.Time `form:"deletedAt"`
+	ResetToken string     `form:"resetToken"`
+	Password   string     `form:"password"`
+	DeletedAt  *time.Time `form:"deletedAt"`
 }
 
 // PasswordReplacement data type
@@ -48,6 +48,98 @@ type CustomAccessToken struct {
 	Email   string    `json:"email"`
 	LoginAt time.Time `json:"login_at"`
 	jwt.StandardClaims
+}
+
+// SignupData data type
+type SignupData struct {
+	FirstName string `form:"firstName" json:"firstName" binding:"required"`
+	LastName  string `form:"lastName" json:"lastName" binding:"required"`
+	Email     string `form:"email" json:"email" binding:"required"`
+	Password  string `form:"password" json:"password" binding:"required"`
+}
+
+// LoginData data type
+type LoginData struct {
+	Email    string `form:"email" json:"email" binding:"required"`
+	Password string `form:"password" json:"password" binding:"required"`
+}
+
+// Signup registers a new user
+func Signup(signupData *SignupData) (*AuthenticatedUser, helpers.HTTPError) {
+	var errorDetails helpers.HTTPError
+
+	user := new(User)
+	authenticatedUser := new(AuthenticatedUser)
+	copier.Copy(user, &signupData)
+
+	createdUser, err := Create(user)
+	if err.Code != 0 {
+		return &AuthenticatedUser{}, err
+	}
+
+	token, signErr := signToken(createdUser)
+	if signErr != nil {
+		errorDetails = helpers.HTTPError{Code: 500, Message: "Something went wrong.", Error: signErr}
+		return &AuthenticatedUser{}, errorDetails
+	}
+
+	createdUser.Token = token
+	copier.Copy(authenticatedUser, &createdUser)
+	return authenticatedUser, errorDetails
+}
+
+// Login authenticated a user given email and password
+func Login(loginData *LoginData) (*AuthenticatedUser, helpers.HTTPError) {
+	var errorDetails helpers.HTTPError
+
+	user := new(User)
+	authenticatedUser := new(AuthenticatedUser)
+
+	err := config.Config.Db.Where("email=?", loginData.Email).First(&user).Error
+	if err != nil {
+		if user.ID == "" {
+			errorDetails = helpers.HTTPError{Code: 401, Message: "Email or password is incorrect.", Error: errors.New("Email or password is incorrect.")}
+			return &AuthenticatedUser{}, errorDetails
+		}
+		errorDetails = helpers.HTTPError{Code: 500, Message: "Something went wrong.", Error: errors.New("Something went wrong.")}
+		return &AuthenticatedUser{}, errorDetails
+	}
+
+	passwordErr := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(loginData.Password))
+	if passwordErr != nil {
+		errorDetails = helpers.HTTPError{Code: 401, Message: "Email or password is incorrect.", Error: errors.New("Email or password is incorrect.")}
+		return &AuthenticatedUser{}, errorDetails
+	}
+
+	token, signErr := signToken(user)
+	if signErr != nil {
+		errorDetails = helpers.HTTPError{Code: 500, Message: "Something went wrong.", Error: signErr}
+		return &AuthenticatedUser{}, errorDetails
+	}
+
+	user.Token = token
+	copier.Copy(authenticatedUser, &user)
+	return authenticatedUser, errorDetails
+}
+
+// Logout destroys user token for given ID
+func Logout(id string) (bool, helpers.HTTPError) {
+	var user User
+	var errorDetails helpers.HTTPError
+
+	err := config.Config.Db.Where("id=?", id).First(&user).Error
+	if err != nil {
+		if user.ID == "" {
+			errorDetails = helpers.HTTPError{Code: 404, Message: "Access token is invalid.", Error: errors.New("Access token is invalid.")}
+			return false, errorDetails
+		}
+		errorDetails = helpers.HTTPError{Code: 500, Message: "Something went wrong.", Error: errors.New("Something went wrong.")}
+		return false, errorDetails
+	}
+
+	user.Token = ""
+	config.Config.Db.Save(&user)
+	return true, errorDetails
 }
 
 // Index gets the list of all users
@@ -66,15 +158,13 @@ func Index() (*[]PublicUser, helpers.HTTPError) {
 }
 
 // Create adds a new user
-func Create(user *User) (*AuthenticatedUser, helpers.HTTPError) {
+func Create(user *User) (*User, helpers.HTTPError) {
 	var errorDetails helpers.HTTPError
-	authenticatedUser := new(AuthenticatedUser)
-	copier.Copy(authenticatedUser, &user)
 
 	if isEmailUnique(user.Email) {
 		if user.Password == "" {
 			errorDetails = helpers.HTTPError{Code: 401, Message: "Password is required.", Error: errors.New("Password is required..")}
-			return &AuthenticatedUser{}, errorDetails
+			return &User{}, errorDetails
 		}
 
 		user.ID = ""
@@ -88,21 +178,13 @@ func Create(user *User) (*AuthenticatedUser, helpers.HTTPError) {
 		err := config.Config.Db.Create(&user).Error
 		if err != nil {
 			errorDetails = helpers.HTTPError{Code: 500, Message: "Something went wrong.", Error: err}
-			return &AuthenticatedUser{}, errorDetails
+			return &User{}, errorDetails
 		}
 
-		token, signErr := signToken(user)
-		if signErr != nil {
-			errorDetails = helpers.HTTPError{Code: 500, Message: "Something went wrong.", Error: err}
-			return &AuthenticatedUser{}, errorDetails
-		}
-
-		user.Token = token
-		copier.Copy(authenticatedUser, &user)
-		return authenticatedUser, errorDetails
+		return user, errorDetails
 	}
 	errorDetails = helpers.HTTPError{Code: 401, Message: "User already exists.", Error: errors.New("User already exists.")}
-	return &AuthenticatedUser{}, errorDetails
+	return &User{}, errorDetails
 }
 
 // Get fetches the user belonging to given ID
@@ -213,7 +295,10 @@ func signToken(user *User) (string, error) {
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS512, claims)
-	return token.SignedString([]byte(config.Config.AppKey))
+	tokenString, err := token.SignedString([]byte(config.Config.AppKey))
+	user.Token = tokenString
+	config.Config.Db.Save(&user)
+	return tokenString, err
 }
 
 func changePassword(password, id string, nullifyToken bool) (*PublicUser, helpers.HTTPError) {

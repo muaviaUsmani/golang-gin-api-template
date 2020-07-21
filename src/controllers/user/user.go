@@ -4,6 +4,7 @@ import (
 	"api/src/models/user"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jinzhu/copier"
 )
 
 type userResource struct {
@@ -13,6 +14,61 @@ type userResource struct {
 type forgotPasswordResource struct {
 	ID         string `uri:"id" binding:"required,uuid"`
 	ResetToken string `uri:"token" binding:"required"`
+}
+
+// Signup registers a new user
+func Signup(ctx *gin.Context) {
+	var signupData user.SignupData
+	if ctx.ShouldBind(&signupData) == nil {
+		var createdUser *user.AuthenticatedUser
+
+		createdUser, err := user.Signup(&signupData)
+		if err.Code != 0 {
+			ctx.JSON(err.Code, gin.H{
+				"message": err.Message,
+			})
+			return
+		}
+
+		ctx.JSON(200, &createdUser)
+		return
+	}
+	ctx.JSON(401, gin.H{
+		"message": "Required fields must be filled.",
+	})
+}
+
+// Login authenticated a user given email and password
+func Login(ctx *gin.Context) {
+	var loginData user.LoginData
+	if ctx.ShouldBind(&loginData) == nil {
+		var authenticatedUser *user.AuthenticatedUser
+
+		authenticatedUser, err := user.Login(&loginData)
+		if err.Code != 0 {
+			ctx.JSON(err.Code, gin.H{
+				"message": err.Message,
+			})
+			return
+		}
+
+		ctx.JSON(200, &authenticatedUser)
+		return
+	}
+	ctx.JSON(401, gin.H{
+		"message": "Required fields must be filled.",
+	})
+}
+
+// Logout invalidates the token for future use
+func Logout(ctx *gin.Context) {
+	storedUser := ctx.MustGet("user").(*user.PublicUser)
+	_, userErr := user.Logout(storedUser.ID)
+	if userErr.Code != 0 {
+		ctx.JSON(userErr.Code, gin.H{"message": userErr.Message})
+		return
+	}
+	ctx.JSON(200, gin.H{"success": true})
 }
 
 // Index fetches all users
@@ -31,7 +87,7 @@ func Index(ctx *gin.Context) {
 func Create(ctx *gin.Context) {
 	var userJson user.User
 	if ctx.ShouldBind(&userJson) == nil {
-		var createdUser *user.AuthenticatedUser
+		var createdUser *user.User
 
 		createdUser, err := user.Create(&userJson)
 		if err.Code != 0 {
@@ -40,7 +96,9 @@ func Create(ctx *gin.Context) {
 			})
 			return
 		}
-		ctx.JSON(200, &createdUser)
+		publicUser := new(user.PublicUser)
+		copier.Copy(publicUser, &createdUser)
+		ctx.JSON(200, &publicUser)
 	}
 }
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"api/src/config"
+	"api/src/middleware"
 	"fmt"
 
 	"github.com/gin-gonic/gin"
@@ -25,19 +26,29 @@ func main() {
 	}
 
 	r := gin.Default()
-	r.GET("/ping", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"message": "pong",
-		})
-	})
+	r.Use(middleware.CORS())
 
-	r.GET("/users", user.Index)
-	r.POST("/users", user.Create)
-	r.GET("/users/:id", user.Get)
-	r.PUT("/users/:id", user.Put)
-	r.PATCH("/users/:id/password", user.UpdatePasswordAuthenticated)
-	r.PATCH("/users/:id/password/:token", user.UpdatePasswordReset)
-	r.DELETE("/users/:id", user.Delete)
+	r.Group("/guest")
+	{
+		r.POST("/signup", user.Signup)
+		r.POST("/login", user.Login)
+
+		r.PATCH("/users/:id/password/:token", user.UpdatePasswordReset)
+	}
+
+	r.Group("/authorized")
+	{
+		r.Use(middleware.Authorized())
+
+		r.POST("/logout", user.Logout)
+
+		r.GET("/users", user.Index)
+		r.POST("/users", user.Create)
+		r.GET("/users/:id", user.Get)
+		r.PUT("/users/:id", user.Put)
+		r.PATCH("/users/:id/password", user.UpdatePasswordAuthenticated)
+		r.DELETE("/users/:id", user.Delete)
+	}
 
 	r.Run(config.Config.Port)
 }
