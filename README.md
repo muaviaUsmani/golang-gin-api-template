@@ -1,1 +1,2 @@
-# image-storage-api
+# Golang API Template
+Made using Gin Gonic.
