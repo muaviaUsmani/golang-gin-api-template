@@ -1,1 +1,2 @@
-# golang-gin-api-template
+# Golang API Template
+Made using Gin Gonic.
