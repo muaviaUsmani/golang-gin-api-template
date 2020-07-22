@@ -1,7 +1,8 @@
 package user
 
 import (
-	"api/src/models/user"
+	UserDAO "api/src/daos/user"
+	UserModel "api/src/models/user"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/copier"
@@ -18,11 +19,11 @@ type forgotPasswordResource struct {
 
 // Signup registers a new user
 func Signup(ctx *gin.Context) {
-	var signupData user.SignupData
+	var signupData UserModel.SignupData
 	if ctx.ShouldBind(&signupData) == nil {
-		var createdUser *user.AuthenticatedUser
+		var createdUser *UserModel.AuthenticatedUser
 
-		createdUser, err := user.Signup(&signupData)
+		createdUser, err := UserDAO.Signup(&signupData)
 		if err.Code != 0 {
 			ctx.JSON(err.Code, gin.H{
 				"message": err.Message,
@@ -40,11 +41,11 @@ func Signup(ctx *gin.Context) {
 
 // Login authenticated a user given email and password
 func Login(ctx *gin.Context) {
-	var loginData user.LoginData
+	var loginData UserModel.LoginData
 	if ctx.ShouldBind(&loginData) == nil {
-		var authenticatedUser *user.AuthenticatedUser
+		var authenticatedUser *UserModel.AuthenticatedUser
 
-		authenticatedUser, err := user.Login(&loginData)
+		authenticatedUser, err := UserDAO.Login(&loginData)
 		if err.Code != 0 {
 			ctx.JSON(err.Code, gin.H{
 				"message": err.Message,
@@ -62,8 +63,8 @@ func Login(ctx *gin.Context) {
 
 // Logout invalidates the token for future use
 func Logout(ctx *gin.Context) {
-	storedUser := ctx.MustGet("user").(*user.PublicUser)
-	_, userErr := user.Logout(storedUser.ID)
+	storedUser := ctx.MustGet("user").(*UserModel.PublicUser)
+	_, userErr := UserDAO.Logout(storedUser.ID)
 	if userErr.Code != 0 {
 		ctx.JSON(userErr.Code, gin.H{"message": userErr.Message})
 		return
@@ -73,7 +74,7 @@ func Logout(ctx *gin.Context) {
 
 // Index fetches all users
 func Index(ctx *gin.Context) {
-	userData, err := user.Index()
+	userData, err := UserDAO.Index()
 	if err.Code != 0 {
 		ctx.JSON(err.Code, gin.H{
 			"message": err.Message,
@@ -85,18 +86,18 @@ func Index(ctx *gin.Context) {
 
 // Create adds a new user resource
 func Create(ctx *gin.Context) {
-	var userJson user.User
+	var userJson UserModel.User
 	if ctx.ShouldBind(&userJson) == nil {
-		var createdUser *user.User
+		var createdUser *UserModel.User
 
-		createdUser, err := user.Create(&userJson)
+		createdUser, err := UserDAO.Create(&userJson)
 		if err.Code != 0 {
 			ctx.JSON(err.Code, gin.H{
 				"message": err.Message,
 			})
 			return
 		}
-		publicUser := new(user.PublicUser)
+		publicUser := new(UserModel.PublicUser)
 		copier.Copy(publicUser, &createdUser)
 		ctx.JSON(200, &publicUser)
 	}
@@ -110,7 +111,7 @@ func Get(ctx *gin.Context) {
 		ctx.JSON(40, gin.H{"message": "User ID is required."})
 		return
 	}
-	userData, userErr := user.Get(uresource.ID)
+	userData, userErr := UserDAO.Get(uresource.ID)
 	if userErr.Code != 0 {
 		ctx.JSON(userErr.Code, gin.H{"message": userErr.Message})
 		return
@@ -121,7 +122,7 @@ func Get(ctx *gin.Context) {
 // Put updates the user by given ID and returns the user
 func Put(ctx *gin.Context) {
 	var uresource userResource
-	var userJson user.PublicUser
+	var userJson UserModel.PublicUser
 
 	if err := ctx.ShouldBindUri(&uresource); err != nil {
 		ctx.JSON(403, gin.H{"message": "User ID is required."})
@@ -131,7 +132,7 @@ func Put(ctx *gin.Context) {
 		ctx.JSON(403, gin.H{"message": "User data is invalid."})
 		return
 	}
-	userData, err := user.Put(&userJson, uresource.ID)
+	userData, err := UserDAO.Put(&userJson, uresource.ID)
 	if err.Code != 0 {
 		ctx.JSON(err.Code, gin.H{"message": err.Message})
 		return
@@ -142,7 +143,7 @@ func Put(ctx *gin.Context) {
 // UpdatePasswordAuthenticated patches the password for user given by ID
 func UpdatePasswordAuthenticated(ctx *gin.Context) {
 	var uresource userResource
-	var passwordObject user.PasswordReplacement
+	var passwordObject UserModel.PasswordReplacement
 
 	if err := ctx.ShouldBindUri(&uresource); err != nil {
 		ctx.JSON(403, gin.H{"message": "User ID is required."})
@@ -152,7 +153,7 @@ func UpdatePasswordAuthenticated(ctx *gin.Context) {
 		ctx.JSON(403, gin.H{"message": "Password data is invalid."})
 		return
 	}
-	userData, updateErr := user.UpdatePasswordAuthenticated(&passwordObject, uresource.ID)
+	userData, updateErr := UserDAO.UpdatePasswordAuthenticated(&passwordObject, uresource.ID)
 	if updateErr.Code != 0 {
 		ctx.JSON(updateErr.Code, gin.H{"message": updateErr.Message})
 		return
@@ -163,7 +164,7 @@ func UpdatePasswordAuthenticated(ctx *gin.Context) {
 // UpdatePasswordReset patches the password for user given by token
 func UpdatePasswordReset(ctx *gin.Context) {
 	var uresource forgotPasswordResource
-	var passwordObject user.PasswordReplacement
+	var passwordObject UserModel.PasswordReplacement
 
 	if err := ctx.ShouldBindUri(&uresource); err != nil {
 		ctx.JSON(403, gin.H{"message": err.Error()})
@@ -173,7 +174,7 @@ func UpdatePasswordReset(ctx *gin.Context) {
 		ctx.JSON(403, gin.H{"message": "Password data is invalid."})
 		return
 	}
-	userData, updateErr := user.UpdatePasswordReset(&passwordObject, uresource.ID, uresource.ResetToken)
+	userData, updateErr := UserDAO.UpdatePasswordReset(&passwordObject, uresource.ID, uresource.ResetToken)
 	if updateErr.Code != 0 {
 		ctx.JSON(updateErr.Code, gin.H{"message": updateErr.Message})
 		return
@@ -189,7 +190,7 @@ func Delete(ctx *gin.Context) {
 		ctx.JSON(40, gin.H{"message": "User ID is required."})
 		return
 	}
-	_, userErr := user.Delete(uresource.ID)
+	_, userErr := UserDAO.Delete(uresource.ID)
 	if userErr.Code != 0 {
 		ctx.JSON(userErr.Code, gin.H{"message": userErr.Message})
 		return

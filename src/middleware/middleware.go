@@ -5,6 +5,7 @@ import (
 	"api/src/helpers"
 	"api/src/models/user"
 	"errors"
+	"fmt"
 
 	"strings"
 
@@ -24,6 +25,7 @@ func Authorized() gin.HandlerFunc {
 		headers := requestHeader{}
 		ctx.BindHeader(&headers)
 		queryToken := ctx.Query("token")
+		queryApiKey := ctx.Query("key")
 
 		if headers.Authorization != "" || queryToken != "" {
 			var token string
@@ -33,6 +35,7 @@ func Authorized() gin.HandlerFunc {
 				token = queryToken
 			}
 			owner, err := validateToken(token)
+			fmt.Println(owner)
 			if err.Code != 0 {
 				ctx.AbortWithStatusJSON(err.Code, gin.H{"message": err.Message})
 			}
@@ -40,6 +43,10 @@ func Authorized() gin.HandlerFunc {
 			publicUser := new(user.PublicUser)
 			copier.Copy(publicUser, &owner)
 			ctx.Set("user", publicUser)
+		} else if headers.ApiKey != "" || queryApiKey != "" {
+
+		} else {
+			ctx.AbortWithStatusJSON(401, gin.H{"message": "No access token or API key provided."})
 		}
 		ctx.Next()
 	}
@@ -77,7 +84,7 @@ func validateToken(token string) (*user.User, helpers.HTTPError) {
 		return owner, errorDetails
 	}
 	if claims, ok := parsedToken.Claims.(*user.CustomAccessToken); ok && parsedToken.Valid {
-		fetchErr := config.Config.Db.Where("id=?", claims.ID).First(&owner).Error
+		fetchErr := config.Config.Db.Where("id=? AND token=?", claims.ID, token).First(&owner).Error
 		if fetchErr != nil {
 			if owner.ID == "" {
 				errorDetails = helpers.HTTPError{Code: 401, Message: "Access token is invalid.", Error: errors.New("Access token is invalid.")}
